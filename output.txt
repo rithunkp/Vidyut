@@ -1,6 +1,9 @@
-Email: ********@gmail.com
-Phone Number: *****1313
-Credit Card Number: ***********1412
-Passport Number: 4213123
-Resident ID: 1294949
-Bank Account Number: **********1241
+Dear Mr. John Doe,
+
+Your appointment with Dr. Jane Smith is *****rmed for 15th June 2025. 
+Please bring your ID and health records.
+
+If you have *****ions, email ********@example.com or call +91 123.
+
+*****rely,
+HealthCare Center
