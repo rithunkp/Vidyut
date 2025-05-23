@@ -4,21 +4,11 @@ import java.util.regex.*;
 
 public class RedactionTool {
 
-    // Regex patterns for sensitive data
     private static final String EMAIL_REGEX = "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b";
     private static final String PHONE_REGEX = "\\b(\\+\\d{1,3}[- ]?)?\\d{10}\\b";
-    
-    // Credit card: 13 to 19 digits, allowing spaces or dashes
     private static final String CREDIT_CARD_REGEX = "\\b(?:\\d[ -]*?){13,19}\\b";
-
-    // Passport: Assume 1 letter + 7 digits OR 9 alphanumeric characters (simple generic pattern)
     private static final String PASSPORT_REGEX = "\\b([A-Za-z]\\d{7}|[A-Za-z0-9]{9})\\b";
-
-    // Resident ID (like Aadhaar): exactly 12 digits
-    private static final String RESIDENT_ID_REGEX = "\\b\\d{12}\\b";
-
-    // Bank Account: 8 to 14 digits
-    private static final String BANK_ACCOUNT_REGEX = "\\b\\d{8,14}\\b";
+    private static final String NUMBER_REGEX = "\\b\\d{8,14}\\b";
 
     public static void main(String[] args) {
         if (args.length < 2) {
@@ -31,7 +21,7 @@ public class RedactionTool {
 
         try {
             String content = new String(Files.readAllBytes(Paths.get(inputPath)));
-            String redactedContent = redactSensitiveData(content);
+            String redactedContent = redactdata(content);
             Files.write(Paths.get(outputPath), redactedContent.getBytes());
             System.out.println("Redacted file saved to: " + outputPath);
         } catch (IOException e) {
@@ -39,102 +29,83 @@ public class RedactionTool {
         }
     }
 
-    private static String redactSensitiveData(String text) {
-        // Mask phone numbers: first 5 digits '*'
-        text = maskPhoneNumbers(text);
-
-        // Mask emails: all chars before '@' replaced with '*'
-        text = maskEmails(text);
-
-        // Mask credit card numbers: replace all digits but last 4 with '*'
-        text = maskGenericNumber(text, CREDIT_CARD_REGEX);
-
-        // Mask passport numbers similarly
-        text = maskGenericNumber(text, PASSPORT_REGEX);
-
-        // Mask resident ID (12 digits)
-        text = maskGenericNumber(text, RESIDENT_ID_REGEX);
-
-        // Mask bank account numbers
-        text = maskGenericNumber(text, BANK_ACCOUNT_REGEX);
-
+    private static String redactdata(String text) {
+        // first 5 digits '*'
+        text = rphone(text);
+        // all chars before '@' replaced with '*'
+        text = rmail(text);
+        // all digits but last 4 with '*'
+        text = rno(text, CREDIT_CARD_REGEX);
+        text = rno(text, PASSPORT_REGEX);
+        text = rno(text, NUMBER_REGEX);
         return text;
     }
 
-    private static String maskPhoneNumbers(String text) {
-        Pattern phonePattern = Pattern.compile(PHONE_REGEX);
-        Matcher phoneMatcher = phonePattern.matcher(text);
-        StringBuffer phoneResult = new StringBuffer();
-        while (phoneMatcher.find()) {
-            String phone = phoneMatcher.group();
-            StringBuilder maskedPhone = new StringBuilder();
-            int digitsMasked = 0;
+    private static String rphone(String text) {
+        Pattern pattern = Pattern.compile(PHONE_REGEX);
+        Matcher matcher = pattern.matcher(text);
+        StringBuffer result = new StringBuffer();
+        while (matcher.find()) {
+            String phone = matcher.group();
+            StringBuilder masked = new StringBuilder();
+            int n = 0;
             for (char c : phone.toCharArray()) {
-                if (Character.isDigit(c) && digitsMasked < 5) {
-                    maskedPhone.append('*');
-                    digitsMasked++;
+                if (Character.isDigit(c) && n < 5) {
+                    masked.append('*');
+                    n++;
                 } else {
-                    maskedPhone.append(c);
+                    masked.append(c);
                 }
             }
-            phoneMatcher.appendReplacement(phoneResult, maskedPhone.toString());
+            matcher.appendReplacement(result, masked.toString());
         }
-        phoneMatcher.appendTail(phoneResult);
-        return phoneResult.toString();
+        matcher.appendTail(result);
+        return result.toString();
     }
 
-    private static String maskEmails(String text) {
-        Pattern emailPattern = Pattern.compile(EMAIL_REGEX);
-        Matcher emailMatcher = emailPattern.matcher(text);
-        StringBuffer emailResult = new StringBuffer();
-        while (emailMatcher.find()) {
-            String email = emailMatcher.group();
-            int atIndex = email.indexOf('@');
-            if (atIndex > 0) {
-                StringBuilder maskedEmail = new StringBuilder();
-                for (int i = 0; i < atIndex; i++) {
-                    maskedEmail.append('*');
+    private static String rmail(String text) {
+        Pattern pattern = Pattern.compile(EMAIL_REGEX);
+        Matcher matcher = pattern.matcher(text);
+        StringBuffer result = new StringBuffer();
+        while (matcher.find()) {
+            String email = matcher.group();
+            int index = email.indexOf('@');
+            if (index > 0) {
+                StringBuilder masked = new StringBuilder();
+                for (int i = 0; i < index; i++) {
+                    masked.append('*');
                 }
-                maskedEmail.append(email.substring(atIndex));
-                emailMatcher.appendReplacement(emailResult, maskedEmail.toString());
+                masked.append(email.substring(index));
+                matcher.appendReplacement(result, masked.toString());
             } else {
-                emailMatcher.appendReplacement(emailResult, email);
+                matcher.appendReplacement(result, email);
             }
         }
-        emailMatcher.appendTail(emailResult);
-        return emailResult.toString();
+        matcher.appendTail(result);
+        return result.toString();
     }
 
-    private static String maskGenericNumber(String text, String regex) {
+    private static String rno(String text, String regex) {
         Pattern pattern = Pattern.compile(regex);
         Matcher matcher = pattern.matcher(text);
         StringBuffer result = new StringBuffer();
         while (matcher.find()) {
             String match = matcher.group();
+            String digits = match.replaceAll("[^0-9A-Za-z]", "");
 
-            // Remove spaces/dashes for masking but keep original format for replacement
-            String digitsOnly = match.replaceAll("[^0-9A-Za-z]", "");
-
-            int len = digitsOnly.length();
+            int len = digits.length();
             if (len <= 4) {
-                // If very short, mask fully
                 matcher.appendReplacement(result, repeat('*', len));
                 continue;
             }
 
-            int unmaskedCount = 4;
-            int maskedCount = len - unmaskedCount;
-
+            int n = 4;
+            int m = len - n;
             StringBuilder masked = new StringBuilder();
-
-            // For masking, mask first maskedCount chars, then add last 4 chars
-            for (int i = 0; i < maskedCount; i++) {
+            for (int i = 0; i < m; i++) {
                 masked.append('*');
             }
-            masked.append(digitsOnly.substring(maskedCount));
-
-            // Now we need to re-insert the original formatting (spaces/dashes) if any
-            // Simple approach: just replace whole match with masked string (without formatting)
+            masked.append(digits.substring(m));
             matcher.appendReplacement(result, masked.toString());
         }
         matcher.appendTail(result);
