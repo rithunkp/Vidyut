@@ -3,7 +3,7 @@ Dear Mr. John Doe,
 Your appointment with Dr. Jane Smith is confirmed for 15th June 2025. 
 Please bring your ID and health records.
 
-If you have questions, email john.doe@example.com or call +91 123.
+If you have questions, email john.doe@example.com or call +91 1234567890.
 
 Sincerely,
 HealthCare Center
