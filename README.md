@@ -1,1 +1,2 @@
-# Vidyut
+# Develop a redaction tool that anonymizes sensitive data from various input formats,
+# providing a secure, customizable solution for data privacy, protection and compliance with privacy regulations.
