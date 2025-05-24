@@ -11,8 +11,7 @@ def redact(input_path, output_path):
         'phone': r'\b(?:\+?1[-.\s]?)?\(?[0-9]{3}\)?[-.\s]?[0-9]{3}[-.\s]?[0-9]{4}\b',
         'ssn': r'\b\d{3}-\d{2}-\d{4}\b',
         'credit_card': r'\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|3[47][0-9]{13}|6(?:011|5[0-9]{2})[0-9]{12})\b',
-        'bank_account': r'\b[0-9]{8,17}\b(?=\s|$|[^A-Za-z0-9])',
-        'routing_number': r'\b[0-9]{9}\b(?=\s|$|[^A-Za-z0-9])'
+
     }
     
     def mask_email(email):
@@ -72,10 +71,6 @@ def redact(input_path, output_path):
                     elif pattern_name == 'ssn':
                         masked_text = mask_ssn(word_text)
                     elif pattern_name == 'credit_card':
-                        masked_text = mask_number(word_text, 4)
-                    elif pattern_name == 'bank_account':
-                        masked_text = mask_number(word_text, 4)
-                    elif pattern_name == 'routing_number':
                         masked_text = mask_number(word_text, 4)
                     else:
                         masked_text = '*' * len(word_text)
