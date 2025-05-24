@@ -1,9 +1,8 @@
 import re
 import sys
-import fitz  # PyMuPDF
+import fitz 
 
-def redact_pdf_smart(input_path, output_path):
-    print ("REDACT PDF SMART FUNCTION GETS EXECUTED")
+def redact(input_path, output_path):
 
     doc = fitz.open(input_path)
 
@@ -17,7 +16,6 @@ def redact_pdf_smart(input_path, output_path):
     }
     
     def mask_email(email):
-        print ("MASK MAIL FUNCTION GETS EXECUTED")
         """j****@gmail.com"""
         at_pos = email.find('@')
         if at_pos > 0:
@@ -25,7 +23,6 @@ def redact_pdf_smart(input_path, output_path):
         return email
     
     def mask_phone(phone):
-        print ("MASK PHONE FUNCTION GETS EXECUTED")
         """***-***-1234"""
         digits = re.sub(r'[^0-9]', '', phone)
         if len(digits) >= 10:
@@ -41,7 +38,6 @@ def redact_pdf_smart(input_path, output_path):
         return phone
     
     def mask_number(text, keep_last=4):
-        print ("MASK NUMBER FUNCTION GETS EXECUTED")
         """****1234"""
         digits = re.sub(r'[^0-9]', '', text)
         if len(digits) > keep_last:
@@ -49,7 +45,6 @@ def redact_pdf_smart(input_path, output_path):
         return '*' * len(digits)
     
     def mask_ssn(ssn):
-        print ("MASK SSN FUNCTION GETS EXECUTED")
         """***-**-1234"""
         parts = ssn.split('-')
         if len(parts) == 3:
@@ -70,7 +65,6 @@ def redact_pdf_smart(input_path, output_path):
             # Check each pattern
             for pattern_name, pattern in patterns.items():
                 if re.fullmatch(pattern, word_text):
-                    # Choose the right masking method
                     if pattern_name == 'email':
                         masked_text = mask_email(word_text)
                     elif pattern_name == 'phone':
@@ -108,7 +102,6 @@ def redact_pdf_smart(input_path, output_path):
     print(f"Redacted PDF saved to: {output_path}")
 
 def main():
-    print ("MAIN FUNCTION GETS EXECUTED")
     if len(sys.argv) < 3:
         print("Usage: python main.py <input_pdf> <output_pdf>")
         print("Example: python main.py document.pdf redacted.pdf")
@@ -120,8 +113,7 @@ def main():
     print("Starting PDF redaction...")
     
     try:
-        # Use the smart local approach
-        redact_pdf_smart(input_pdf, output_pdf)
+        redact(input_pdf, output_pdf)
     except Exception as e:
         print(f"Error: {e}")
 
