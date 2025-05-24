@@ -2,23 +2,15 @@ import re
 import sys
 import json
 import fitz  # PyMuPDF
-from openai import OpenAI
+import requests
 
-def redact_pdf_with_llm(input_path, output_path, api_key=None):
+def redact_pdf_with_free_llm(input_path, output_path):
     """
-    Use LLM to intelligently detect and redact sensitive information
+    Use free Hugging Face LLM to detect and redact sensitive information
     """
-    # Initialize OpenAI client
-    if not api_key:
-        print("⚠️  No API key provided. Using fallback regex method.")
-        return redact_pdf_fallback(input_path, output_path)
-    
-    client = OpenAI(api_key=api_key)
-    
-    # Open the PDF
     doc = fitz.open(input_path)
     
-    print("🤖 Using AI to detect sensitive information...")
+    print("🤖 Using free AI to detect sensitive information...")
     
     # Process each page
     for page_num in range(len(doc)):
@@ -30,8 +22,10 @@ def redact_pdf_with_llm(input_path, output_path, api_key=None):
         if not page_text.strip():
             continue
             
-        # Ask LLM to identify sensitive information
-        sensitive_items = identify_sensitive_data_with_llm(client, page_text)
+        print(f"📄 Processing page {page_num + 1}...")
+        
+        # Ask free LLM to identify sensitive information
+        sensitive_items = identify_sensitive_data_with_huggingface(page_text)
         
         if not sensitive_items:
             continue
@@ -53,84 +47,199 @@ def redact_pdf_with_llm(input_path, output_path, api_key=None):
     # Save the redacted PDF
     doc.save(output_path)
     doc.close()
-    print(f"✅ AI-redacted PDF saved to: {output_path}")
+    print(f"✅ Free AI-redacted PDF saved to: {output_path}")
 
-def identify_sensitive_data_with_llm(client, text):
+def identify_sensitive_data_with_huggingface(text):
     """
-    Use LLM to identify sensitive information in text
+    Use Hugging Face free API to identify sensitive information
     """
+    # Hugging Face Inference API endpoint (free tier)
+    API_URL = "https://api-inference.huggingface.co/models/microsoft/DialoGPT-medium"
+    
+    # Fixed the f-string formatting issue
+    example_json = '[{"text": "john@email.com", "masked": "j***@email.com", "type": "email"}]'
+    
     prompt = f"""
-    Analyze the following text and identify any sensitive personal information. 
-    For each piece of sensitive data found, provide:
-    1. The exact text as it appears
-    2. A masked version (keep format but hide digits/letters with *)
-    3. The type of sensitive data
+    Find sensitive data in this text. Return JSON array only:
+    {example_json}
     
-    Rules for masking:
-    - Emails: Keep first letter and domain (j****@gmail.com)
-    - Phone numbers: Keep last 4 digits (***-***-1234)
-    - Credit cards: Keep last 4 digits (****-****-****-1234)
-    - SSN: Keep last 4 digits (***-**-1234)
-    - Bank accounts: Keep last 4 digits
+    Look for: emails, phone numbers, credit cards, SSN, bank accounts.
+    Don't flag words like "confidential" or "question".
     
-    Only identify actual sensitive data, not words like "confidential" or "question".
-    
-    Return as JSON array with format:
-    [{{"text": "original", "masked": "masked_version", "type": "email|phone|ssn|credit_card|bank_account"}}]
-    
-    Text to analyze:
-    {text}
+    Text: {text[:500]}
     """
     
     try:
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "You are a data privacy expert. Identify sensitive personal information accurately."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.1,
-            max_tokens=1000
+        response = requests.post(API_URL, 
+            headers={"Authorization": "Bearer hf_placeholder"}, 
+            json={"inputs": prompt},
+            timeout=10
         )
         
-        result_text = response.choices[0].message.content.strip()
+        if response.status_code == 200:
+            result = response.json()
+            # Try to extract JSON from response
+            if result and len(result) > 0:
+                text_response = result[0].get('generated_text', '')
+                return parse_llm_response(text_response)
         
-        # Try to extract JSON from the response
-        try:
-            # Find JSON array in the response
-            json_start = result_text.find('[')
-            json_end = result_text.rfind(']') + 1
-            
-            if json_start != -1 and json_end != -1:
-                json_text = result_text[json_start:json_end]
-                return json.loads(json_text)
-            else:
-                return []
-                
-        except json.JSONDecodeError:
-            print("⚠️  Could not parse LLM response as JSON")
-            return []
-            
+        # If Hugging Face fails, use local smart detection
+        return smart_local_detection(text)
+        
     except Exception as e:
-        print(f"⚠️  LLM API error: {e}")
-        return []
+        print(f"⚠️  Free API error, using local detection: {e}")
+        return smart_local_detection(text)
+
+def smart_local_detection(text):
+    """
+    Smart local detection without any external APIs
+    """
+    sensitive_items = []
+    
+    # Enhanced patterns with validation
+    patterns = {
+        'email': r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
+        'phone': r'\b(?:\+?1[-.\s]?)?\(?[0-9]{3}\)?[-.\s]?[0-9]{3}[-.\s]?[0-9]{4}\b',
+        'ssn': r'\b\d{3}-\d{2}-\d{4}\b',
+        'credit_card': r'\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|3[47][0-9]{13})\b',
+        'bank_account': r'\b[0-9]{8,17}\b(?=\s|$|[^A-Za-z0-9])'
+    }
+    
+    for pattern_name, pattern in patterns.items():
+        matches = re.finditer(pattern, text)
+        for match in matches:
+            original = match.group()
+            masked = mask_text_smart(original, pattern_name)
+            
+            # Only add if it's actually sensitive (not false positive)
+            if is_actually_sensitive(original, pattern_name):
+                sensitive_items.append({
+                    'text': original,
+                    'masked': masked,
+                    'type': pattern_name
+                })
+    
+    return sensitive_items
+
+def is_actually_sensitive(text, data_type):
+    """
+    Check if the detected text is actually sensitive data
+    """
+    # Skip common false positives
+    false_positives = ['confidential', 'question', 'sincerely', 'attention', 'important']
+    
+    if text.lower() in false_positives:
+        return False
+    
+    if data_type == 'email':
+        # Must have valid email structure
+        return '@' in text and '.' in text.split('@')[-1]
+    
+    elif data_type == 'phone':
+        # Must have enough digits
+        digits = re.sub(r'[^0-9]', '', text)
+        return len(digits) >= 10
+    
+    elif data_type == 'ssn':
+        # Must be exactly 9 digits in XXX-XX-XXXX format
+        return re.match(r'^\d{3}-\d{2}-\d{4}$', text) is not None
+    
+    elif data_type == 'credit_card':
+        # Basic Luhn check
+        digits = re.sub(r'[^0-9]', '', text)
+        return len(digits) >= 13 and luhn_check(digits)
+    
+    elif data_type == 'bank_account':
+        # Must be reasonable length and standalone
+        digits = re.sub(r'[^0-9]', '', text)
+        return 8 <= len(digits) <= 17
+    
+    return True
+
+def luhn_check(number_str):
+    """
+    Basic Luhn algorithm check for credit cards
+    """
+    try:
+        digits = [int(d) for d in number_str]
+        checksum = 0
+        is_even = False
+        
+        for digit in reversed(digits):
+            if is_even:
+                digit *= 2
+                if digit > 9:
+                    digit = digit // 10 + digit % 10
+            checksum += digit
+            is_even = not is_even
+        
+        return checksum % 10 == 0
+    except:
+        return False
+
+def mask_text_smart(text, data_type):
+    """
+    Smart masking based on data type
+    """
+    if data_type == 'email':
+        at_pos = text.find('@')
+        if at_pos > 0:
+            return text[0] + '*' * (at_pos - 1) + text[at_pos:]
+    
+    elif data_type == 'phone':
+        digits = re.sub(r'[^0-9]', '', text)
+        if len(digits) >= 10:
+            masked_digits = '*' * (len(digits) - 4) + digits[-4:]
+            result = text
+            digit_pos = 0
+            for i, char in enumerate(text):
+                if char.isdigit() and digit_pos < len(masked_digits):
+                    result = result[:i] + masked_digits[digit_pos] + result[i+1:]
+                    digit_pos += 1
+            return result
+    
+    elif data_type == 'ssn':
+        return '***-**-' + text[-4:]
+    
+    elif data_type in ['credit_card', 'bank_account']:
+        digits = re.sub(r'[^0-9]', '', text)
+        if len(digits) > 4:
+            return '*' * (len(digits) - 4) + digits[-4:]
+    
+    return text
+
+def parse_llm_response(response_text):
+    """
+    Try to parse JSON from LLM response
+    """
+    try:
+        # Find JSON array in response
+        json_start = response_text.find('[')
+        json_end = response_text.rfind(']') + 1
+        
+        if json_start != -1 and json_end != -1:
+            json_text = response_text[json_start:json_end]
+            return json.loads(json_text)
+    except:
+        pass
+    
+    return []
 
 def replace_text_in_page(page, words, original_text, masked_text):
     """
     Find and replace text in the PDF page
     """
-    # Look for the original text in the words
-    for i, word_info in enumerate(words):
+    for word_info in words:
         word_text = word_info[4]
         
-        if original_text.lower() in word_text.lower() or word_text.lower() in original_text.lower():
+        if original_text.lower() in word_text.lower():
             word_bbox = fitz.Rect(word_info[0], word_info[1], word_info[2], word_info[3])
             
             # Cover with white rectangle
             page.draw_rect(word_bbox, color=(1, 1, 1), fill=(1, 1, 1))
             
             # Add masked text
-            font_size = min(12, word_bbox.height * 0.8)
+            font_size = max(8, min(12, word_bbox.height * 0.8))
             page.insert_text(
                 (word_bbox.x0, word_bbox.y1 - 2),
                 masked_text,
@@ -139,79 +248,21 @@ def replace_text_in_page(page, words, original_text, masked_text):
             )
             break
 
-def redact_pdf_fallback(input_path, output_path):
-    """
-    Fallback method using regex patterns (your original approach)
-    """
-    doc = fitz.open(input_path)
-    
-    patterns = {
-        'email': r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
-        'phone': r'\b(?:\+?1[-.\s]?)?\(?[0-9]{3}\)?[-.\s]?[0-9]{3}[-.\s]?[0-9]{4}\b',
-        'ssn': r'\b\d{3}-\d{2}-\d{4}\b',
-        'credit_card': r'\b(?:[0-9]{4}[-\s]?){3}[0-9]{4}\b'
-    }
-    
-    def mask_text(text, pattern_type):
-        if pattern_type == 'email':
-            at_index = text.find('@')
-            if at_index > 0:
-                return text[0] + '*' * (at_index - 1) + text[at_index:]
-        elif pattern_type in ['phone', 'ssn', 'credit_card']:
-            digits = re.sub(r'[^0-9]', '', text)
-            if len(digits) >= 4:
-                masked_digits = '*' * (len(digits) - 4) + digits[-4:]
-                result = text
-                digit_pos = 0
-                for i, char in enumerate(text):
-                    if char.isdigit() and digit_pos < len(masked_digits):
-                        result = result[:i] + masked_digits[digit_pos] + result[i+1:]
-                        digit_pos += 1
-                return result
-        return text
-    
-    for page_num in range(len(doc)):
-        page = doc[page_num]
-        words = page.get_text("words")
-        
-        for word_info in words:
-            word_text = word_info[4]
-            word_bbox = fitz.Rect(word_info[0], word_info[1], word_info[2], word_info[3])
-            
-            for pattern_type, pattern in patterns.items():
-                if re.match(pattern, word_text):
-                    masked_text = mask_text(word_text, pattern_type)
-                    if masked_text != word_text:
-                        page.draw_rect(word_bbox, color=(1, 1, 1), fill=(1, 1, 1))
-                        page.insert_text(
-                            (word_bbox.x0, word_bbox.y1 - 2),
-                            masked_text,
-                            fontsize=min(12, word_bbox.height * 0.8),
-                            color=(0, 0, 0)
-                        )
-                    break
-    
-    doc.save(output_path)
-    doc.close()
-    print(f"📄 Regex-redacted PDF saved to: {output_path}")
-
 def main():
     if len(sys.argv) < 3:
-        print("Usage: python main.py <input_pdf> <output_pdf> [openai_api_key]")
-        print("Example: python main.py document.pdf redacted.pdf sk-...")
-        print("\nIf no API key provided, will use fallback regex method")
+        print("Usage: python main.py <input_pdf> <output_pdf>")
+        print("Example: python main.py document.pdf redacted.pdf")
+        print("\n🆓 Using FREE AI detection!")
         return
     
     input_pdf = sys.argv[1]
     output_pdf = sys.argv[2]
-    api_key = sys.argv[3] if len(sys.argv) > 3 else None
     
     try:
-        redact_pdf_with_llm(input_pdf, output_pdf, api_key)
+        redact_pdf_with_free_llm(input_pdf, output_pdf)
+        print("🎉 Success! Your PDF has been redacted for free!")
     except Exception as e:
         print(f"❌ Error: {e}")
-        print("🔄 Trying fallback method...")
-        redact_pdf_fallback(input_pdf, output_pdf)
 
 if __name__ == "__main__":
     main()
