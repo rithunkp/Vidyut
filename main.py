@@ -16,7 +16,7 @@ def redact(input_path, output_path):
     }
     
     def mask_email(email):
-        """j****@gmail.com"""
+        """x****@gmail.com"""
         at_pos = email.find('@')
         if at_pos > 0:
             return email[0] + '*' * (at_pos - 1) + email[at_pos:]
@@ -81,7 +81,7 @@ def redact(input_path, output_path):
                         masked_text = '*' * len(word_text)
                     
                     if masked_text != word_text:
-                        print(f"Found {pattern_name}: {word_text} → {masked_text}")
+                        print(f"Found {pattern_name}: {word_text} -> {masked_text}")
                         
                         # Cover original text with white rectangle
                         page.draw_rect(word_bbox, color=(1, 1, 1), fill=(1, 1, 1))
